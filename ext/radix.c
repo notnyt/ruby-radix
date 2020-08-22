@@ -69,6 +69,7 @@ static VALUE rb_radix_initialize(int, VALUE *, VALUE);
 static VALUE rb_radix_add(int, VALUE *, VALUE);
 static VALUE rb_radix_search_best(int, VALUE *, VALUE);
 static VALUE rb_radix_search_exact(int, VALUE *, VALUE);
+static VALUE rb_radix_search_first(int, VALUE *, VALUE);
 static void closed_radix(void);
 static prefix_t *args_to_prefix(char *, long);
 static VALUE object_node_add(struct radixdata *, prefix_t *, VALUE, VALUE);
@@ -418,6 +419,58 @@ rb_radix_search_exact(int argc, VALUE *argv, VALUE self)
 		return Qnil;
 
 	if ((node = radix_search_exact(PICKRT(prefix, radixp), prefix)) == NULL
+	    || node->data == NULL) {
+		Deref_Prefix(prefix);
+		return Qnil;
+	}
+	Deref_Prefix(prefix);
+
+	obj = rb_obj_alloc(rb_cRadixNode);
+	Data_Get_Struct(obj, struct radixnode, rn);
+	rn->msg = (VALUE)node->data;
+	memcpy(&rn->prefix, node->prefix, sizeof(prefix_t));
+
+	return obj;
+}
+
+/*
+ * call-seq:
+ *   radix.search_first(key[, prefixlen]) -> hash
+ *
+ * Return a value from the database by locating the key string
+ * provided. 
+ * Search strategy is to match first hit suited for the key.
+ * If the key is not found, returns nil.
+ */
+static VALUE
+rb_radix_search_first(int argc, VALUE *argv, VALUE self)
+{
+	struct radixdata *radixp;
+	radix_node_t *node;
+	struct radixnode *rn;
+	VALUE obj;
+	VALUE v_addr, v_plen;
+	prefix_t *prefix;
+	int plen;
+
+	GetRadix(self, radixp);
+
+	if (argc == 2) {
+		rb_scan_args(argc, argv, "11", &v_addr, &v_plen);
+		plen = FIX2INT(v_plen);
+	} else {
+		rb_scan_args(argc, argv, "1", &v_addr);
+		plen = -1;
+	}
+
+	if (TYPE(v_addr) != T_STRING)
+		v_addr = rb_obj_as_string(v_addr);
+
+	prefix = args_to_prefix(RSTRING_PTR(v_addr), plen);
+	if (prefix == NULL)
+		return Qnil;
+
+	if ((node = radix_search_first(PICKRT(prefix, radixp), prefix)) == NULL
 	    || node->data == NULL) {
 		Deref_Prefix(prefix);
 		return Qnil;
@@ -853,6 +906,7 @@ void Init_radix()
 	rb_define_method(rb_cRadix, "add", rb_radix_add, -1);
 	rb_define_method(rb_cRadix, "search_best", rb_radix_search_best, -1);
 	rb_define_method(rb_cRadix, "search_exact", rb_radix_search_exact, -1);
+	rb_define_method(rb_cRadix, "search_first", rb_radix_search_first, -1);
 	rb_define_method(rb_cRadix, "[]", rb_radix_aref, -1);
 	rb_define_method(rb_cRadix, "[]=", rb_radix_add0, -1);
 	rb_define_method(rb_cRadix, "store", rb_radix_add, -1);
