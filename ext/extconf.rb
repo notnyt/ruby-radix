@@ -1,5 +1,5 @@
 require "mkmf"
 
-$CFLAGS += " -Wall"
+#$CFLAGS += " -Wall"
 
 create_makefile("radix")

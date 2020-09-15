@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name        = "ruby-radix"
-  s.version     = "0.0.5"
+  s.version     = "0.0.6"
   s.authors     = ["sogabe"]
   s.email       = ["sogabe@iij.ad.jp"]
   s.homepage    = "https://github.com/iij/ruby-radix"

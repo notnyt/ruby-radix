@@ -83,6 +83,7 @@ static VALUE rb_radix_clear(VALUE);
 static VALUE rb_radix_each_key(VALUE);
 static VALUE rb_radix_each_value(VALUE);
 static VALUE rb_radix_each_pair(VALUE);
+static VALUE rb_radix_each_parent_pair(VALUE);
 static VALUE rb_radix_length(VALUE);
 static VALUE rb_radix_to_hash(VALUE);
 static void rn_free_func(radix_node_t *, void *);
@@ -685,7 +686,7 @@ rb_radix_each_value(VALUE self)
 
 /*
  * call-seq:
- * radix.each {|key, value| block} -> self
+ * radix.each_pair {|key, value| block} -> self
  *
  * Calls the block once for each [key, value] pair int the database.
  * Returns self.
@@ -714,6 +715,86 @@ rb_radix_each_pair(VALUE self)
 				rb_yield(rb_assoc_new(keystr, (VALUE)rn->data));
 			}
 		} RADIX_WALK_END;
+	}
+
+	return self;
+}
+
+/*
+ * call-seq:
+ * radix.each_parent_pair {|key, value| block} -> self
+ *
+ * Calls the block once for each [key, value] pair int the database.
+ * Returns self.
+ */
+static VALUE
+rb_radix_each_parent_pair(VALUE self)
+{
+	struct radixdata *radixp;
+	char prefix[256];
+	unsigned int gen_id_cur;
+	VALUE keystr;
+	int i;
+
+	GetRadix(self, radixp);
+
+	gen_id_cur = radixp->gen_id;
+
+	for (i = 0; i < RTNUM; i++) {
+        do {
+            radix_node_t *Xhead = radixp->rt[i]->head;
+            radix_node_t *Xstack[RADIX_MAXBITS+1];
+            radix_node_t **Xsp = Xstack;
+            radix_node_t *Xrn = (Xhead);
+            radix_node_t *Xnode;
+            // inspect tree at current node
+            while ((Xnode = Xrn)) {
+                // if there's an entry at this node
+                if (Xnode->prefix) {
+                    RaiseModified(gen_id_cur, radixp->gen_id);
+                    // if there's data set, yield to ruby loop
+                    if (Xnode->data != NULL) {
+                        prefix_ntop(Xnode->prefix, prefix, sizeof(prefix));
+                        keystr = rb_tainted_str_new(prefix,
+                                        strlen(prefix));
+                        rb_yield(rb_assoc_new(keystr, (VALUE)Xnode->data));
+                    }
+                    // do not continue traversing down, but check rest of stack
+                    if (Xsp != Xstack) {
+                        // set current node to last stack entry
+                        Xrn = *(--Xsp);
+                    }
+                    // no children and no stack entries, stop
+                    else {
+                        Xrn = (radix_node_t *) 0;
+                    }
+                }
+                // if left child
+                else if (Xrn->l) {
+                    // if right child
+                    if (Xrn->r) {
+                        // add right child to stack
+                        *Xsp++ = Xrn->r;
+                    }
+                    // set current node to left node
+                    Xrn = Xrn->l;
+                }
+                // if right child
+                else if (Xrn->r) {
+                    // set current node to right child
+                    Xrn = Xrn->r;
+                }
+                // if we have stack entries that aren't the top
+                else if (Xsp != Xstack) {
+                    // set current node to last stack entry
+                    Xrn = *(--Xsp);
+                }
+                // no children and no stack entries, stop
+                else {
+                    Xrn = (radix_node_t *) 0;
+                }
+            } 
+        } while (0);
 	}
 
 	return self;
@@ -917,6 +998,7 @@ void Init_radix()
 	rb_define_method(rb_cRadix, "each_key", rb_radix_each_key, 0);
 	rb_define_method(rb_cRadix, "each_value", rb_radix_each_value, 0);
 	rb_define_method(rb_cRadix, "each_pair", rb_radix_each_pair, 0);
+	rb_define_method(rb_cRadix, "each_parent_pair", rb_radix_each_parent_pair, 0);
 	rb_define_method(rb_cRadix, "length", rb_radix_length, 0);
 	rb_define_method(rb_cRadix, "to_hash", rb_radix_to_hash, 0);
 
